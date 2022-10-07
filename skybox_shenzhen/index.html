@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<head>
+<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, viewport-fit=cover"/>
+<style>
+    body {
+        background-color: #000000;
+    }
+</style>
+</head>
+<body>
+<div id="main"></div>
+<script type="module">
+/** 3D 对象基类 */
+class Base3D {
+    x = 0;
+    y = 0;
+    z = 0;
+    rotationX = 0;
+    rotationY = 0;
+    rotationZ = 0;
+    width = 0;
+    height = 0;
+    depth = 0;
+    originX = "50%";
+    originY = "50%";
+    originZ = "0px";
+    parent = null;
+    children = [];
+
+    dom = document.createElement("div");
+
+    __orgO = { x: "50%", y: "50%", z: "0px" };
+    __orgT = { x: "-50%", y: "-50%", z: "0px" };
+    __orgF = { x: 0, y: 0, z: 0 };
+
+    constructor() {
+        this.dom.__3dObj = this;
+        this.dom.style.position = "absolute";
+        this.dom.style.transform = "translateZ(0px)";
+        this.dom.style.transformStyle = "preserve-3d";
+    }
+
+    size(x, y, z) {
+        this.width = x;
+        this.height = y == undefined ? x : y;
+        this.depth = z == undefined ? x : z;
+    }
+
+    rotation(x, y, z) {
+        this.rotationX = x;
+        this.rotationY = y == undefined ? x : y;
+        this.rotationZ = z == undefined ? x : z;
+    }
+
+    rotate(x, y, z) {
+        this.rotationX += x;
+        this.rotationY += y == undefined ? x : y;
+        this.rotationZ += z == undefined ? x : z;
+    }
+
+    position(x, y, z) {
+        this.x = x;
+        this.y = y == undefined ? x : y;
+        this.z = z == undefined ? x : z;
+    }
+
+    size(width, height, depth) {
+        this.width = width;
+        this.height = height == undefined ? width : height;
+        this.depth = depth == undefined ? width : depth;
+    }
+
+    setTexture(uri) {
+        this.dom.style.backgroundImage = `url(${uri})`;
+        this.dom.style.backfaceVisibility = "hidden";
+    }
+
+    addChild(view) {
+        this.children.push(view);
+        view.parent = this;
+        this.dom.appendChild(view.dom);
+    }
+
+    updateOrigin() {
+        if (typeof this.originX == "number") {
+            var _x = Math.round(this.originX - this.__orgF.x);
+            this.__orgO.x = _x + "px";
+            this.__orgT.x = -_x + "px";
+        } else {
+            this.__orgO.x = this.originX;
+            this.__orgT.x = "-" + this.originX;
+        }
+
+        if (typeof this.originY == "number") {
+            var _y = Math.round(this.originY - this.__orgF.y);
+            this.__orgO.y = _y + "px";
+            this.__orgT.y = -_y + "px";
+        } else {
+            this.__orgO.y = this.originY;
+            this.__orgT.y = "-" + this.originY;
+        }
+
+        if (typeof this.originZ == "number") {
+            var _z = Math.round(this.originZ - this.__orgF.z);
+            this.__orgO.z = _z + "px";
+            this.__orgT.z = -_z + "px";
+        } else {
+            this.__orgO.z = this.__orgT.z = "0px";
+        }
+
+        this.dom.style.transformOrigin =
+            this.__orgO.x + " " + this.__orgO.y + " " + this.__orgO.z;
+    }
+
+    updateTransform() {
+        const fixed = (n) =>  Math.round(n * 100) / 100;        
+        let transformStyle = `translate3d(${this.__orgT.x}, ${this.__orgT.y}, ${this.__orgT.z}) `;
+        transformStyle += `translate3d(${fixed(this.x)}px, ${fixed(this.y)}px, ${fixed(this.z)}px) `;
+        transformStyle += `rotateX(${fixed(this.rotationX) % 360}deg) rotateY(${fixed(this.rotationY) % 360}deg) rotateZ(${fixed(this.rotationZ) % 360}deg) `;
+        this.dom.style.transform = transformStyle;
+    }
+
+    updateSize() {
+        this.dom.style.width = Math.round(this.width) + "px";
+        this.dom.style.height = Math.round(this.height) + "px";
+    }
+
+    update() {
+        this.updateSize();
+        this.updateOrigin();
+        this.updateTransform();
+    }
+}
+
+/** 舞台容器 */
+export class Stage extends Base3D {
+    __rotationfix = new Base3D();
+    __positionfix = new Base3D();
+    fov = null;
+    camera = {
+        fov: 75,
+        x: 0,
+        y: 0,
+        z: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+    };
+
+    constructor() {
+        super();
+        this.dom.style.display = "block";
+        this.dom.style.top = "0px";
+        this.dom.style.left = "0px";
+        this.dom.style.width = "0px";
+        this.dom.style.height = "0px";
+        this.dom.style.transformStyle = "flat";
+        this.dom.style.transform = "";
+        this.dom.style.overflow = "hidden";
+
+        this.dom.appendChild(this.__rotationfix.dom);
+        this.__rotationfix.dom.appendChild(this.__positionfix.dom);
+    }
+
+    updateTransform() {
+        // 弧度换算
+        const fovRad = ((this.camera.fov * 0.5) / 180) * Math.PI;
+        // fov 和 perspective 换算
+        this.fov = Math.round((0.5 / Math.tan(fovRad)) * this.height);
+        this.dom.style.perspective = this.fov + "px";
+
+        this.__rotationfix.position(
+            Math.round(this.width / 2),
+            Math.round(this.height / 2),
+            this.fov
+        );
+        this.__rotationfix.rotation(
+            -this.camera.rotationX,
+            -this.camera.rotationY,
+            -this.camera.rotationZ
+        );
+        this.__rotationfix.updateTransform();
+
+        this.__positionfix.position(-this.camera.x, -this.camera.y, -this.camera.z);
+        this.__positionfix.updateTransform();
+    }
+
+    addChild(view) {
+        this.__positionfix.addChild(view);
+    }
+}
+
+/** 天空盒子 */
+export class Skybox extends Base3D {
+    front = new Base3D();
+    back = new Base3D();
+    left = new Base3D();
+    right = new Base3D();
+    up = new Base3D();
+    down = new Base3D();
+    constructor(options) {
+        super();
+        const { front, back, left, right, up, down } = options;
+        this.front.setTexture(front.uri);
+        this.back.setTexture(back.uri);
+        this.left.setTexture(left.uri);
+        this.right.setTexture(right.uri);
+        this.up.setTexture(up.uri);
+        this.down.setTexture(down.uri);
+
+        this.addChild(this.front);
+        this.addChild(this.back);
+        this.addChild(this.left);
+        this.addChild(this.right);
+        this.addChild(this.up);
+        this.addChild(this.down);
+    }
+
+    update() {
+        const _w = Math.round(this.width);
+        const _h = Math.round(this.height);
+        const _d = Math.round(this.depth);
+
+        this.__orgF.x = this.width / 2;
+        this.__orgF.y = this.height / 2;
+        this.__orgF.z = this.depth / 2;
+
+        this.front.size(_w, _h, 0);
+        this.front.position(0, 0, -_d / 2);
+        this.front.rotation(0, 0, 0);
+        this.front.update();
+
+        this.back.size(_w, _h, 0);
+        this.back.position(0, 0, _d / 2);
+        this.back.rotation(0, 180, 0);
+        this.back.update();
+
+        this.left.size(_d, _h, 0);
+        this.left.position(-_w / 2, 0, 0);
+        this.left.rotation(0, 90, 0);
+        this.left.update();
+
+        this.right.size(_d, _h, 0);
+        this.right.position(_w / 2, 0, 0);
+        this.right.rotation(0, -90, 0);
+        this.right.update();
+
+        this.up.size(_w, _d, 0);
+        this.up.position(0, -_h / 2, 0);
+        this.up.rotation(-90, 0, 0);
+        this.up.update();
+
+        this.down.size(_w, _d, 0);
+        this.down.position(0, _h / 2, 0);
+        this.down.rotation(90, 0, 0);
+        this.down.update();
+
+        super.updateOrigin();
+        super.updateTransform();
+    }
+}
+
+// ========== 场景逻辑 ===========
+
+// 创建场景
+const stage = new Stage();
+stage.size(window.innerWidth, window.innerHeight);
+stage.update();
+document.getElementById("main").appendChild(stage.dom);
+
+// 创建天空盒子
+const sky = new Skybox({
+    front: { uri: "sz/mobile_f.jpg" },
+    back: { uri: "sz/mobile_b.jpg" },
+    left: { uri: "sz/mobile_l.jpg" },
+    right: { uri: "sz/mobile_r.jpg" },
+    up: { uri: "sz/mobile_u.jpg" },
+    down: { uri: "sz/mobile_d.jpg" },
+});
+sky.size(1024);
+sky.position(0, 0, 0);
+sky.update();
+
+stage.addChild(sky);
+
+// 响应屏幕调整尺寸
+function resize() {
+    stage.size(window.innerWidth, window.innerHeight);
+    stage.update();
+}
+
+window.onresize = function () {
+    resize();
+};
+resize();
+
+// ====== 手势和鼠标事件处理 ======
+let autoRotate = true;
+
+const touchStartPoint = {
+    x: 0,
+    y: 0,
+};
+
+function onTouchStart(e) {
+    autoRotate = false;
+    let pageX = 0;
+    let pageY = 0;
+    if (e.type === 'touchstart') {
+        const [touch] = e.touches;
+        pageX = touch.pageX;
+        pageY = touch.pageY;
+    } else if (e.type === 'mousedown') {
+        pageX = e.pageX;
+        pageY = e.pageY;
+    } else {
+        return;
+    }
+    touchStartPoint.x = pageX;
+    touchStartPoint.y = pageY;
+}
+
+function onTouchMove(e) {
+    if (autoRotate) return;
+    e.preventDefault();
+    let pageX = 0;
+    let pageY = 0;
+    if (e.type === 'touchmove') {
+        const [touch] = e.touches;
+        pageX = touch.pageX;
+        pageY = touch.pageY;
+    } else if (e.type === 'mousemove') {
+        pageX = e.pageX;
+        pageY = e.pageY;
+    } else {
+        return false;
+    }
+    const { x, y } = touchStartPoint;
+    const _x = pageX - x;
+    const _y = pageY - y;
+
+    sky.rotate(_y, _x, 0);
+    touchStartPoint.x = pageX;
+    touchStartPoint.y = pageY;
+    return false;
+}
+
+function onTouchEnd() {
+    autoRotate = true;
+}
+
+stage.dom.addEventListener("touchstart", onTouchStart);
+stage.dom.addEventListener("touchmove", onTouchMove);
+stage.dom.addEventListener("touchend", onTouchEnd);
+stage.dom.addEventListener("touchcancel", onTouchEnd);
+
+stage.dom.addEventListener("mousedown", onTouchStart);
+stage.dom.addEventListener("mousemove", onTouchMove);
+stage.dom.addEventListener("mouseup", onTouchEnd);
+stage.dom.addEventListener("mouseleave", onTouchEnd);
+
+
+// 更新状态，让场景动起来
+let prevFrameTime = Date.now();
+function tick() {
+    const now = Date.now();
+    // fps 60
+    if (now - prevFrameTime >= 1000 / 60) {
+        prevFrameTime = now;
+        if (autoRotate) {
+            sky.rotate(0, 0.4, 0);
+        }
+        sky.update();
+    }
+    window.requestAnimationFrame(tick);
+}
+
+window.requestAnimationFrame(tick);
+
+</script>
+</body>
