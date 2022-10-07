@@ -339,7 +339,7 @@ function onTouchMove(e) {
     const _x = pageX - x;
     const _y = pageY - y;
 
-    sky.rotate(_y, _x, 0);
+    sky.rotate(-_y, _x, 0);
     touchStartPoint.x = pageX;
     touchStartPoint.y = pageY;
     return false;
